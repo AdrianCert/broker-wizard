@@ -4,8 +4,10 @@ dictionaryDefinitions: []
 dictionaries: []
 words:
   - fastapi
+  - levelname
   - msgpack
   - msgspec
+  - uvicorn
   - websockets
 ignoreWords: []
 import: []

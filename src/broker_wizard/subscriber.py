@@ -16,7 +16,7 @@ class Subscriber:
     async def connect(self):
         self.websocket = await websockets.connect(self.server_uri)
 
-    async def subscribe(self, criteria: Dict[str, str], callback: Callable[[Dict[str, Any]], None], subscription_id: str = default):
+    async def subscribe(self, subscription: Dict[str, str], callback: Callable[[Dict[str, Any]], None], subscription_id: str = default):
         if self.websocket is None or self.websocket.closed:
             await self.connect()
 
@@ -24,21 +24,27 @@ class Subscriber:
             subscription_id = str(uuid.uuid4())
         self.subscription_callbacks[subscription_id] = callback
 
-        subscription_data = {
-            'id': subscription_id,
-            'criteria': criteria
-        }
-        await self.websocket.send(msgspec.msgpack.encode(subscription_data))
+        payload = ("subscribe", {
+            "subscription": subscription,
+            "subscription_id": subscription_id
+        })
+        await self.websocket.send(msgspec.msgpack.encode(payload))
+
+    async def handle_notification(self, message: Dict[str, Any], extra: Dict[str, Any] = {}):
+        for subscription_id in extra.get("subscriptions", []):
+            callback = self.subscription_callbacks.get(subscription_id)
+            if callback:
+                callback(message)
 
     async def listen_for_notifications(self):
         try:
             while True:
-                response = await self.websocket.recv()
-                notification = msgspec.msgpack.decode(response)
-                subscription_id = notification.get('id')
-                callback = self.subscription_callbacks.get(subscription_id)
-                if callback:
-                    callback(notification)
+                data = await self.websocket.recv()
+                action, payload = msgspec.msgpack.decode(data)
+                if action == "publish":
+                    await self.handle_notification(**payload)
+                if action == "ping":
+                    await self.websocket.send(msgspec.msgpack.encode(("pong", {})))
         except websockets.exceptions.ConnectionClosed:
             print("Connection closed")
             self.websocket = None
@@ -52,7 +58,7 @@ class Subscriber:
 
 # Example usage
 async def main():
-    subscriber = Subscriber("ws://127.0.0.1:8819/ws/subscriber")
+    subscriber = Subscriber("ws://localhost:8901/ws")
 
     def news_callback(notification):
         print(f"News callback received notification: {notification}")
