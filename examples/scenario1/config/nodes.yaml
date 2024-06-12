@@ -1,0 +1,25 @@
+# ---
+broker_wizard:
+    node-1:
+        port: 8901
+        neighbors_nodes:
+            node-2: ws://localhost:8902/ws
+    node-2:
+        port: 8902
+        neighbors_nodes:
+            node-1: ws://localhost:8901/ws
+            node-3: ws://localhost:8903/ws
+            node-4: ws://localhost:8904/ws
+    node-3:
+        port: 8903
+        neighbors_nodes:
+            node-2: ws://localhost:8902/ws
+            node-5: ws://localhost:8905/ws
+    node-4:
+        port: 8904
+        neighbors_nodes:
+            node-2: ws://localhost:8902/ws
+    node-5:
+        port: 8905
+        neighbors_nodes:
+            node-3: ws://localhost:8903/ws

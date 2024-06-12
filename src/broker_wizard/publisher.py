@@ -22,7 +22,7 @@ class Publisher:
 
 # Example usage
 async def main():
-    publisher = Publisher("ws://localhost:8900/ws")
+    publisher = Publisher("ws://localhost:8905/ws")
 
     # Publish a message
     await publisher.publish({'type': 'news', 'priority': 'high', 'content': 'Breaking news!!'})
@@ -31,4 +31,5 @@ async def main():
     # await asyncio.sleep(5)
     # await publisher.publish({'type': 'weather', 'region': 'north', 'content': 'Sunny weather'})
 
-asyncio.run(main())
+if __name__ == "__main__":
+    asyncio.run(main())

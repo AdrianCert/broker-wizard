@@ -2,9 +2,11 @@ import asyncio
 import collections
 import contextlib
 import dataclasses
+import os
 import time
 import typing
 import uuid
+from pathlib import Path
 
 import msgspec
 import websockets
@@ -382,7 +384,6 @@ class PubSubServer:
                 url=node_url, alias=node_name
             )
 
-
             if not connection_id:
                 logging.warning("Failed to connect to %s", node_name)
                 continue
@@ -394,6 +395,13 @@ class PubSubServer:
             await self.connection_manager.send_single(
                 ("ping", {}), connection_id=connection_id
             )
+            await asyncio.gather(
+                *[
+                    self.forward_subscription(subscription_id, connection_id)
+                    for subscription_id in self.subscriptions_manager.subscriptions_table
+                ]
+            )
+
             logging.info("Connected to %s: %s", node_name, connection_id)
 
     async def job(self):
@@ -463,8 +471,29 @@ class PubSubServer:
                 payload, connection_id=connection_id
             )
 
-    async def handle_subscribe_confirmation(self, connection_id: Types.ConnectionId, subscription_id: Types.SubscriptionId):
-        logging.info("subscription confirmation: %s <- %s", subscription_id, connection_id)
+    async def handle_subscribe_confirmation(
+        self, connection_id: Types.ConnectionId, subscription_id: Types.SubscriptionId
+    ):
+        logging.info(
+            "subscription confirmation: %s <- %s", subscription_id, connection_id
+        )
+
+    async def forward_subscription(
+        self, subscription_id: Types.SubscriptionId, connection_id: Types.ConnectionId
+    ):
+        subscription = {}
+        for (
+            field_name,
+            field_value,
+        ) in self.subscriptions_manager.interests_table.items():
+            if subscription_id in field_value:
+                subscription[field_name] = field_value[subscription_id]
+
+        payload = (
+            "subscribe",
+            {"subscription": subscription, "subscription_id": subscription_id},
+        )
+        await self.connection_manager.send_single(payload, connection_id=connection_id)
 
     async def handle_subscribe(
         self,
@@ -495,12 +524,44 @@ class PubSubServer:
         await self.connection_manager.send_single(payload, connection_id=connection_id)
 
 
-pubsub_server = PubSubServer(
-    neighbors_nodes={
-        "node1": "ws://localhost:8900/ws",
-        "node2": "ws://localhost:8901/ws",
-    }
+class Configuration:
+    def __init__(self, **kwargs):
+        self.config = kwargs
+        logging.info("Configuration: %s", self.config)
+
+    def get(self, key, default=None):
+        return self.config.get(key, default)
+
+    def set(self, key, value):
+        self.config[key] = value
+
+    def update(self, **kwargs):
+        self.config.update(kwargs)
+
+    @classmethod
+    def load(cls, path: str, key: str = None):
+        pass
+        filepath = Path(path)
+        if not filepath.exists():
+            return cls()
+
+        config = msgspec.yaml.decode(filepath.read_bytes())
+        config = config.get("broker_wizard", {})
+        if key:
+            config = config.get(key, {})
+
+        return cls(**config)
+
+
+SERVER_CONFIG = Configuration.load(
+    os.getenv(
+        "BROKER_WIZARD_CONFIG_PATH",
+        "config.yaml",
+    ),
+    os.getenv("BROKER_WIZARD_CONFIG_KEY", "node-1"),
 )
+
+pubsub_server = PubSubServer(neighbors_nodes=SERVER_CONFIG.get("neighbors_nodes", {}))
 
 
 async def main():
@@ -525,4 +586,8 @@ if __name__ == "__main__":
     import uvicorn
 
     # uvicorn.run(app, host="127.0.0.1", port=8900)
-    uvicorn.run(app, host="127.0.0.1", port=8901)
+    uvicorn.run(
+        app,
+        host=SERVER_CONFIG.get("host", "127.0.0.1"),
+        port=SERVER_CONFIG.get("port", 8900),
+    )
